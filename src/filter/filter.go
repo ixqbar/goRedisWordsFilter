@@ -30,6 +30,10 @@ func (obj *WordsFilterRedisHandler) Version() (string, error) {
 	return VERSION, nil
 }
 
+func (obj *WordsFilterRedisHandler) Command() (string, error) {
+	return "Ok", nil
+}
+
 func (obj *WordsFilterRedisHandler) Ping(message string) (string, error) {
 	if len(message) > 0 {
 		return message, nil

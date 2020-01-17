@@ -2,7 +2,7 @@ package filter
 
 import (
 	"bufio"
-	"github.com/willf/bloom"
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 	"io"
 	"os"
 	"strings"
@@ -68,14 +68,14 @@ type WordsMapping struct {
 	sync.Mutex
 	total  int
 	detail map[rune]*WordsItem
-	bm     *bloom.BloomFilter
+	cf     *cuckoo.Filter
 }
 
 func NewWordsMapping() *WordsMapping {
 	return &WordsMapping{
 		total:  0,
 		detail: make(map[rune]*WordsItem, 0),
-		bm:     bloom.New(1<<32, 5),
+		cf:     cuckoo.NewFilter(1000),
 	}
 }
 
@@ -89,7 +89,7 @@ func (obj *WordsMapping) Clear() {
 
 	obj.total = 0
 	obj.detail = make(map[rune]*WordsItem, 0)
-	obj.bm.ClearAll()
+	obj.cf.Reset()
 }
 
 func (obj *WordsMapping) Load() {
@@ -128,7 +128,7 @@ func (obj *WordsMapping) ExistsWord(word string) bool {
 	obj.Lock()
 	defer obj.Unlock()
 
-	return obj.bm.TestString(word)
+	return obj.cf.Lookup([]byte(word))
 }
 
 func (obj *WordsMapping) AddNewWord(word []rune, autoSave bool) bool {
@@ -136,7 +136,7 @@ func (obj *WordsMapping) AddNewWord(word []rune, autoSave bool) bool {
 	defer obj.Unlock()
 
 	if autoSave {
-		if obj.bm.TestAndAddString(string(word)) == false {
+		if obj.cf.Lookup([]byte(string(word))) == false {
 			go func() {
 				file, err := os.OpenFile(GConfig.DictWordsPath, os.O_WRONLY|os.O_APPEND, 0644);
 				if err != nil {
@@ -159,7 +159,7 @@ func (obj *WordsMapping) AddNewWord(word []rune, autoSave bool) bool {
 	if obj.detail[firstWordRune].AddNewWord(word) {
 		obj.total += 1
 		if autoSave == false {
-			obj.bm.AddString(string(word))
+			obj.cf.InsertUnique([]byte(string(word)))
 		}
 		return true
 	}
@@ -178,6 +178,7 @@ func (obj *WordsMapping) DeleteWord(word []rune) bool {
 	}
 
 	if obj.detail[firstWordRune].DeleteWord(word) {
+		obj.cf.Delete([]byte(string(word)))
 		obj.total--
 		return true
 	}
